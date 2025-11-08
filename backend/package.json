@@ -1,0 +1,13 @@
+{
+  "name": "oliveira-gemini-proxy",
+  "version": "0.1.0",
+  "description": "Proxy minimal para enviar imagens e prompts ao Gemini (mantém a API key no servidor).",
+  "main": "server.js",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

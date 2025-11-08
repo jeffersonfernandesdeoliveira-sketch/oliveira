@@ -1,0 +1,547 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+        <meta charset="UTF-8">
+        <script>
+            window.__backend_url = 'http://localhost:3001/analyze';
+            window.__backend_ping = 'http://localhost:3001/ping';
+        </script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Análise de Imagem com Gemini e Firestore</title>
+    <!-- Carrega o Tailwind CSS para estilização moderna e responsiva -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Estilos globais usando a fonte Inter e cores corporativas */
+        :root {
+            --gemini-blue: #4285F4;
+            --gemini-green: #34A853;
+            --gemini-yellow: #FBBC05;
+            --gemini-red: #EA4335;
+        }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f7f7f7;
+        }
+        .card {
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -2px rgba(0, 0, 0, 0.1);
+        }
+        .loading-ring {
+            display: inline-block;
+            width: 30px;
+            height: 30px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        /* Esconde o input de arquivo padrão e usa um botão estilizado */
+        #imageInput {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="app" class="min-h-screen p-4 md:p-8 flex flex-col items-center">
+
+        <!-- Título Principal -->
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-extrabold text-gray-800">Leitor Inteligente de Imagens <span class="text-blue-600">Gemini</span></h1>
+            <p class="mt-2 text-lg text-gray-600">Analise fotos e salve os dados extraídos no Firestore (simulando uma planilha).</p>
+        </header>
+
+        <!-- Área de Processamento -->
+        <div class="w-full max-w-4xl bg-white p-6 md:p-10 rounded-xl card mb-10">
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                
+                <!-- Coluna de Entrada (Imagem e Prompt) -->
+                <div>
+                    <h2 class="text-2xl font-semibold mb-4 text-gray-700">1. Entrada e Análise</h2>
+                    
+                    <!-- Input de Imagem -->
+                    <label for="imageInput" class="block w-full text-center py-3 px-4 mb-4 bg-blue-600 text-white font-bold rounded-lg cursor-pointer hover:bg-blue-700 transition duration-150">
+                        Selecionar Imagem
+                    </label>
+                    <input type="file" id="imageInput" accept="image/*" onchange="handleImageSelected()">
+                    
+                    <!-- Preview da Imagem -->
+                    <div id="imagePreviewContainer" class="hidden h-64 border-2 border-dashed border-gray-300 rounded-lg overflow-hidden flex items-center justify-center mb-4">
+                        <img id="imagePreview" src="" alt="Pré-visualização da Imagem" class="max-h-full max-w-full object-contain">
+                    </div>
+                    
+                    <!-- Prompt para o Gemini -->
+                    <label for="prompt" class="block text-sm font-medium text-gray-700 mb-1">2. O que você deseja extrair da imagem?</label>
+                    <textarea id="prompt" rows="3" class="w-full p-3 border border-gray-300 rounded-lg focus:ring-blue-500 focus:border-blue-500" placeholder="Ex: 'Transcreva todo o texto contido nesta nota fiscal e formate como JSON.'"></textarea>
+
+                    <!-- Botões de Ação -->
+                    <div class="flex gap-3 mt-4">
+                        <button id="analyzeButton" onclick="analyzeImage()" class="flex-1 py-3 px-4 bg-green-600 text-white font-bold rounded-lg hover:bg-green-700 transition duration-150 flex items-center justify-center" disabled>
+                            <span id="analyzeText">3. Analisar Imagem e Salvar</span>
+                            <div id="loadingIndicator" class="loading-ring hidden ml-3"></div>
+                        </button>
+                        <div class="flex flex-col gap-2">
+                            <button id="testBackendButton" onclick="testBackend()" class="py-2 px-4 bg-blue-500 text-white text-sm font-semibold rounded-lg hover:bg-blue-600 transition duration-150">Testar Backend</button>
+                            <button id="quickTestButton" onclick="quickTest()" class="py-2 px-4 bg-purple-500 text-white text-sm font-semibold rounded-lg hover:bg-purple-600 transition duration-150">Teste Rápido</button>
+                        </div>
+                    </div>
+                    <p id="backendStatus" class="mt-2 text-sm text-gray-500">Status do backend: <span id="backendStatusText" class="font-mono">--</span></p>
+                    
+                    <p id="errorMsg" class="mt-3 text-sm text-red-600 hidden">Ocorreu um erro: </p>
+                </div>
+                
+                <!-- Coluna de Resultados -->
+                <div>
+                    <h2 class="text-2xl font-semibold mb-4 text-gray-700">Resultado da Análise (Gemini)</h2>
+                    <div id="resultContainer" class="bg-gray-50 p-4 h-64 overflow-y-auto rounded-lg border border-gray-200">
+                        <p id="resultText" class="text-gray-800 whitespace-pre-wrap">O resultado da análise do Gemini aparecerá aqui após o processamento.</p>
+                    </div>
+                    <p class="mt-4 text-sm text-gray-500">
+                        *O texto acima foi salvo no "banco de dados planilha" abaixo.
+                    </p>
+                </div>
+
+            </div>
+        </div>
+        
+        <!-- Área da "Planilha" (Firestore Data) -->
+        <div class="w-full max-w-4xl">
+            <h2 class="text-2xl font-semibold mb-4 text-gray-700">4. Dados Salvos (Firestore - Sua Planilha)</h2>
+            <div id="dataTable" class="bg-white rounded-xl card overflow-hidden">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Prompt</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Resultado (Início)</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Usuário ID</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Ações</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dataBody" class="bg-white divide-y divide-gray-200">
+                        <!-- Linhas de dados serão injetadas aqui -->
+                        <tr id="loadingRow">
+                            <td colspan="4" class="px-6 py-4 text-center text-gray-500">Carregando dados...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <p class="mt-3 text-sm text-gray-500 text-center">
+                ID do Usuário Logado (para referência): <span id="currentUserId" class="font-mono text-xs bg-gray-200 px-2 py-1 rounded">Autenticando...</span>
+            </p>
+        </div>
+
+    </div>
+
+    <!-- Firebase SDKs -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, query, onSnapshot, addDoc, doc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { setLogLevel } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // Variáveis globais de ambiente (MANDATÓRIAS)
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        // firebaseConfig pode ser injetado como objeto ou string; parse seguro
+        let firebaseConfig = {};
+        try {
+            firebaseConfig = (typeof __firebase_config === 'string') ? JSON.parse(__firebase_config) : (__firebase_config || {});
+        } catch (e) {
+            console.error('firebase_config inválido:', e);
+            firebaseConfig = {};
+        }
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        let db, auth, userId = null;
+        let isAuthReady = false;
+
+        // Inicializa o Firebase
+        try {
+            const app = initializeApp(firebaseConfig);
+            db = getFirestore(app);
+            auth = getAuth(app);
+            setLogLevel('Debug'); // Para logs detalhados do Firestore
+
+            // Função de Autenticação
+            async function initializeAuth() {
+                return new Promise((resolve) => {
+                    onAuthStateChanged(auth, async (user) => {
+                        if (!user) {
+                            if (initialAuthToken) {
+                                try {
+                                    await signInWithCustomToken(auth, initialAuthToken);
+                                } catch (e) {
+                                    console.error("Erro ao autenticar com token customizado:", e);
+                                    await signInAnonymously(auth);
+                                }
+                            } else {
+                                await signInAnonymously(auth);
+                            }
+                        }
+
+                        // Após a autenticação (anônima ou customizada), definimos o userId
+                        // Garantimos pegar o uid do auth.currentUser para evitar inconsistências
+                        userId = auth.currentUser?.uid || crypto.randomUUID();
+                        document.getElementById('currentUserId').textContent = userId;
+                        isAuthReady = true;
+                        // Exponha uma função que retorna o estado atual (evita cópia por valor)
+                        window.isAuthReady = () => isAuthReady;
+                        resolve(true);
+                    });
+                });
+            }
+            
+            // Função para configurar o listener do Firestore (a "Planilha")
+            async function setupFirestoreListener() {
+                if (!db || !userId) {
+                    console.warn("Firestore não pronto para configurar listener.");
+                    return;
+                }
+
+                // Remova a barra inicial no caminho da coleção para consistência
+                const collectionPath = `artifacts/${appId}/users/${userId}/image_analysis_data`;
+                const q = query(collection(db, collectionPath));
+                
+                // onSnapshot atualiza a UI em tempo real quando os dados mudam
+                onSnapshot(q, (querySnapshot) => {
+                    const dataBody = document.getElementById('dataBody');
+                    dataBody.innerHTML = '';
+                    
+                    if (querySnapshot.empty) {
+                        dataBody.innerHTML = `<tr><td colspan="4" class="px-6 py-4 text-center text-gray-500">Nenhum dado de análise salvo ainda.</td></tr>`;
+                        return;
+                    }
+
+                    querySnapshot.forEach((d) => {
+                        const data = d.data();
+                        const row = document.createElement('tr');
+                        row.className = 'hover:bg-gray-100 transition duration-150';
+
+                        // Limita o resultado da análise para exibição na tabela (seguro)
+                        const fullResult = data.resultText || '';
+                        const resultSnippet = fullResult.substring(0, 70) + (fullResult.length > 70 ? '...' : '');
+
+                        const tdPrompt = document.createElement('td');
+                        tdPrompt.className = 'px-6 py-4 whitespace-nowrap text-sm text-gray-900 truncate max-w-xs';
+                        tdPrompt.textContent = data.prompt || '';
+
+                        const tdResult = document.createElement('td');
+                        tdResult.className = 'px-6 py-4 whitespace-nowrap text-sm text-gray-500 truncate max-w-xs';
+                        tdResult.textContent = resultSnippet;
+
+                        const tdUser = document.createElement('td');
+                        tdUser.className = 'px-6 py-4 whitespace-nowrap text-xs font-mono text-gray-400';
+                        tdUser.textContent = data.userId || '';
+
+                        const tdActions = document.createElement('td');
+                        tdActions.className = 'px-6 py-4 whitespace-nowrap text-right text-sm font-medium';
+                        const btn = document.createElement('button');
+                        btn.className = 'text-red-600 hover:text-red-900 ml-4';
+                        btn.textContent = 'Excluir';
+                        btn.addEventListener('click', () => window.deleteEntry(d.id));
+                        tdActions.appendChild(btn);
+
+                        row.appendChild(tdPrompt);
+                        row.appendChild(tdResult);
+                        row.appendChild(tdUser);
+                        row.appendChild(tdActions);
+
+                        dataBody.appendChild(row);
+                    });
+                }, (error) => {
+                    console.error("Erro ao buscar dados do Firestore:", error);
+                    document.getElementById('dataBody').innerHTML = `<tr><td colspan="4" class="px-6 py-4 text-center text-red-500">Erro ao carregar dados. Consulte o console.</td></tr>`;
+                });
+            }
+
+            // Expondo a função de exclusão para uso no HTML
+            window.deleteEntry = async (docId) => {
+                if (!db || !userId) return;
+                try {
+                    const collectionPath = `artifacts/${appId}/users/${userId}/image_analysis_data`;
+                    await deleteDoc(doc(db, collectionPath, docId));
+                    console.log("Documento excluído com sucesso:", docId);
+                } catch (e) {
+                    console.error("Erro ao excluir documento:", e);
+                }
+            };
+            
+            // Inicialização da aplicação
+            initializeAuth().then(() => {
+                // Configura o listener do Firestore somente após a autenticação
+                setupFirestoreListener();
+            });
+
+        } catch (e) {
+            console.error("Erro ao inicializar Firebase:", e);
+        }
+
+    // Exporta variáveis e funções necessárias para o escopo global do window
+    window.db = db;
+    window.auth = auth;
+    // Exponha uma função que retorna o estado atual (evita cópia por valor)
+    window.isAuthReady = () => isAuthReady;
+    window.getUserId = () => userId;
+    window.getAppId = () => appId;
+    window.addDoc = addDoc;
+    window.collection = collection;
+
+    </script>
+
+    <script>
+    // Variáveis globais para a imagem, mimeType e URL do backend
+    let selectedBase64Image = null;
+    let selectedImageMime = 'image/jpeg';
+    // Backend proxy (padrão mesmo host, ou sobrescrever com window.__backend_url)
+    const BACKEND_ANALYZE_URL = typeof window.__backend_url !== 'undefined' ? window.__backend_url : '/analyze';
+    const BACKEND_PING_URL = typeof window.__backend_ping !== 'undefined' ? window.__backend_ping : '/ping';
+
+    // Imagem de teste (PNG base64, 24x12 pixels, texto 'ABC123' fundo branco)
+    const TEST_IMAGE = 'iVBORw0KGgoAAAANSUhEUgAAABgAAAAMCAYAAAB4MH11AAAAp0lEQVQ4jWNgGAUDCRjlpCJ0kvVD+RiKvPVcJJilXQ0YGAX5uBhMdXXM4HxuUzEGESF+hgJ/A0sGBqYEuAJmhiD9FNcgA2FeIX4+RgEhfg4GBkZGhoTYaEm4AhYWXQaGXWwMgoLcDEwM7MwMTKwMDJ+BhvMxMCScuvSQgYGBgUGQl4dBgIubgZWNlYGNi42BAaliYGFhZpDj42FglBVmYGBiGgUDDQAAAhUfbWN54XsAAAAASUVORK5CYII=';
+
+        const analyzeButton = document.getElementById('analyzeButton');
+        const analyzeText = document.getElementById('analyzeText');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const errorMsg = document.getElementById('errorMsg');
+
+        // Função utilitária para conversão de Base64
+        function getBase64Image(file) {
+            return new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.readAsDataURL(file);
+                reader.onload = () => {
+                    const base64String = reader.result.split(',')[1];
+                    resolve(base64String);
+                };
+                reader.onerror = error => reject(error);
+            });
+        }
+
+        // 1. Lida com a seleção da imagem e pré-visualização
+        async function handleImageSelected() {
+            const fileInput = document.getElementById('imageInput');
+            const file = fileInput.files[0];
+            const preview = document.getElementById('imagePreview');
+            const previewContainer = document.getElementById('imagePreviewContainer');
+
+            if (file) {
+                preview.src = URL.createObjectURL(file);
+                previewContainer.classList.remove('hidden');
+                
+                try {
+                    // Detecta e armazena o mimeType real (png, jpeg, webp, ...)
+                    selectedImageMime = file.type || 'image/jpeg';
+                    // Armazena a imagem em Base64 para envio ao Gemini
+                    selectedBase64Image = await getBase64Image(file);
+                    analyzeButton.disabled = false;
+                    analyzeButton.classList.remove('bg-gray-400');
+                    analyzeButton.classList.add('bg-green-600');
+                } catch (e) {
+                    console.error("Erro ao converter imagem para Base64:", e);
+                    selectedBase64Image = null;
+                    analyzeButton.disabled = true;
+                }
+            } else {
+                preview.src = '';
+                previewContainer.classList.add('hidden');
+                selectedBase64Image = null;
+                analyzeButton.disabled = true;
+                analyzeButton.classList.remove('bg-green-600');
+                analyzeButton.classList.add('bg-gray-400');
+            }
+        }
+
+        // 2. Chama a API do Gemini para Análise
+        // Agora chama o proxy backend em vez da API Gemini diretamente
+        async function callGeminiApi(prompt, base64Data, mimeType) {
+            const body = { prompt, image: base64Data, mimeType };
+
+            const maxRetries = 3;
+            for (let i = 0; i < maxRetries; i++) {
+                try {
+                    const response = await fetch(BACKEND_ANALYZE_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body)
+                    });
+
+                    if (!response.ok) {
+                        const text = await response.text();
+                        throw new Error(`Proxy Error: ${response.status} - ${text}`);
+                    }
+
+                    const json = await response.json();
+                    if (json.error) throw new Error(json.error);
+                    return json.text || json.result || '';
+                } catch (error) {
+                    console.error(`Tentativa ${i + 1} falhou.`, error);
+                    if (i === maxRetries - 1) throw error;
+                    await new Promise(resolve => setTimeout(resolve, Math.pow(2, i) * 1000));
+                }
+            }
+        }
+
+        // Testa se o backend está ativo (chama /ping)
+        async function testBackend() {
+            const btn = document.getElementById('testBackendButton');
+            const status = document.getElementById('backendStatusText');
+            btn.disabled = true;
+            const prev = status.textContent;
+            status.textContent = 'testando...';
+            try {
+                const resp = await fetch(BACKEND_PING_URL, { method: 'GET' });
+                if (!resp.ok) {
+                    const txt = await resp.text();
+                    status.textContent = `erro: ${resp.status}`;
+                    console.error('Ping retornou erro:', resp.status, txt);
+                } else {
+                    const json = await resp.json();
+                    status.textContent = json.ok ? 'online' : JSON.stringify(json);
+                }
+            } catch (e) {
+                console.error('Falha ao testar backend:', e);
+                status.textContent = 'offline';
+            } finally {
+                btn.disabled = false;
+                setTimeout(() => { if (status.textContent === 'testando...') status.textContent = prev; }, 2000);
+            }
+        }
+
+        // Executa teste com imagem pré-definida (testa pipeline completo)
+        async function quickTest() {
+            const btn = document.getElementById('quickTestButton');
+            const status = document.getElementById('backendStatusText');
+            const resultText = document.getElementById('resultText');
+            const errorMsg = document.getElementById('errorMsg');
+            const prevText = resultText.textContent;
+            
+            errorMsg.classList.add('hidden');
+            btn.disabled = true;
+            status.textContent = 'testando...';
+            resultText.textContent = 'Executando teste com imagem de exemplo...';
+            
+            try {
+                // 1. Testa conexão primeiro
+                const ping = await fetch(BACKEND_PING_URL);
+                if (!ping.ok) throw new Error('Backend offline');
+                
+                // 2. Envia imagem de teste
+                const result = await callGeminiApi(
+                    'Por favor, leia e retorne apenas o texto contido nesta imagem, sem interpretação adicional.',
+                    TEST_IMAGE,
+                    'image/png'
+                );
+
+                // 3. Exibe resultado com indicador de sucesso/falha
+                const expectedText = 'ABC123';
+                const success = result.toLowerCase().includes(expectedText.toLowerCase());
+                resultText.textContent = `Teste ${success ? '✓ OK' : '✗ Falhou'}\n\nRecebido:\n${result}\n\nEsperado: "${expectedText}"`;
+                
+                // 4. Atualiza status
+                status.textContent = success ? 'online+ok' : 'erro-texto';
+
+            } catch (e) {
+                console.error('Falha no teste rápido:', e);
+                resultText.textContent = prevText;
+                status.textContent = 'erro';
+                errorMsg.textContent = `Teste falhou: ${e.message}`;
+                errorMsg.classList.remove('hidden');
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        // 3. Salva os dados no Firestore (simulando a planilha)
+        async function saveToFirestore(prompt, resultText) {
+            const authReady = (typeof window.isAuthReady === 'function') ? window.isAuthReady() : !!window.isAuthReady;
+            if (!window.db || !window.getUserId() || !authReady) {
+                errorMsg.textContent = "Erro: Banco de dados não inicializado ou usuário não autenticado.";
+                errorMsg.classList.remove('hidden');
+                console.error("Firestore não pronto.");
+                return;
+            }
+
+            try {
+                const docRef = await window.addDoc(window.collection(window.db, 
+                    `artifacts/${window.getAppId()}/users/${window.getUserId()}/image_analysis_data`
+                ), {
+                    userId: window.getUserId(),
+                    timestamp: new Date().toISOString(),
+                    prompt: prompt,
+                    resultText: resultText,
+                    // Não salvamos o Base64 da imagem para evitar exceder o limite de 1MB do documento do Firestore
+                });
+                console.log("Documento salvo com ID:", docRef.id);
+            } catch (e) {
+                console.error("Erro ao adicionar documento ao Firestore:", e);
+                errorMsg.textContent = "Erro ao salvar no 'Planilha' Firestore: " + e.message;
+                errorMsg.classList.remove('hidden');
+            }
+        }
+
+        // 4. Fluxo principal de análise
+        async function analyzeImage() {
+            const prompt = document.getElementById('prompt').value.trim();
+            const resultTextElement = document.getElementById('resultText');
+            
+            errorMsg.classList.add('hidden');
+
+            if (!selectedBase64Image) {
+                errorMsg.textContent = "Por favor, selecione uma imagem primeiro.";
+                errorMsg.classList.remove('hidden');
+                return;
+            }
+
+            if (prompt.length < 5) {
+                errorMsg.textContent = "Por favor, insira um prompt de análise válido (mínimo 5 caracteres).";
+                errorMsg.classList.remove('hidden');
+                return;
+            }
+
+            // Inicia o carregamento
+            analyzeButton.disabled = true;
+            analyzeText.textContent = "Analisando e Salvando...";
+            loadingIndicator.classList.remove('hidden');
+            resultTextElement.textContent = "Processando... Por favor, aguarde o Gemini realizar a análise.";
+
+            // FIX: Aguarda a inicialização completa do Firebase/Auth para evitar "Firestore não pronto"
+            await new Promise(resolve => {
+                const checkReady = () => {
+                    // Verifica se o flag de prontidão do Firebase (função) foi definido pelo script module
+                    const ready = (typeof window.isAuthReady === 'function') ? window.isAuthReady() : !!window.isAuthReady;
+                    if (ready) {
+                        resolve();
+                    } else {
+                        // Tenta novamente após um pequeno atraso
+                        setTimeout(checkReady, 100);
+                    }
+                };
+                checkReady();
+            });
+
+            try {
+                // 1. Chama a API do Gemini
+                const aiResult = await callGeminiApi(prompt, selectedBase64Image, selectedImageMime);
+                resultTextElement.textContent = aiResult;
+                
+                // 2. Salva o resultado no Firestore
+                await saveToFirestore(prompt, aiResult);
+
+            } catch (e) {
+                console.error("Falha na Análise/API:", e);
+                resultTextElement.textContent = `Falha na Análise (Gemini): ${e.message}`;
+                errorMsg.textContent = `Falha crítica. Verifique o console.`;
+                errorMsg.classList.remove('hidden');
+            } finally {
+                // Finaliza o carregamento
+                analyzeButton.disabled = false;
+                analyzeText.textContent = "3. Analisar Imagem e Salvar";
+                loadingIndicator.classList.add('hidden');
+            }
+        }
+    </script>
+
+</body>
+</html>

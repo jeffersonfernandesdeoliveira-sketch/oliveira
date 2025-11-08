@@ -1,0 +1,8 @@
+# Ignorar arquivos sensíveis e artefatos locais
+/backend/.env
+node_modules/
+.env
+.DS_Store
+dist/
+npm-debug.log
+yarn-error.log
