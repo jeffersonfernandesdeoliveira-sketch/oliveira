@@ -1,5 +1,7 @@
 # Frontend do Leitor de Imagens com Gemini
 
+[![Netlify Status](https://api.netlify.com/api/v1/badges/0fae0618-4937-4636-8c96-71d98e08e78c/deploy-status)](https://app.netlify.com/projects/generatorimg/deploys)
+
 Este é o frontend da aplicação de análise de imagens usando a API Gemini.
 
 ## Deploy no Netlify
@@ -8,7 +10,7 @@ Este é o frontend da aplicação de análise de imagens usando a API Gemini.
 2. No Netlify:
    - Conecte com seu repositório GitHub
    - Configure o deploy:
-     - Base directory: leitor-imagem/frontend
+     - Base directory: leitor-imagem/frontend (deixe em branco se você definir Publish directory)
      - Build command: (deixe em branco)
      - Publish directory: leitor-imagem/frontend
 3. Configure as variáveis de ambiente:
